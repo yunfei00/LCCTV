@@ -2,6 +2,11 @@
 
 This repository now includes a standalone inference entrypoint.
 
+Detailed deployment guides:
+
+- Ubuntu CPU: `tracking/ubuntu_cpu_deploy.md`
+- Ubuntu GPU: `tracking/ubuntu_gpu_deploy.md`
+
 Recommended CPU environment:
 
 ```bash
