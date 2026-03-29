@@ -16,6 +16,9 @@ warnings.filterwarnings("ignore", category=FutureWarning, module=r"timm(\..*)?$"
 from lib.inference import LcctvInferencer, discover_sequences
 
 
+TRACKER_NAME = "lcctv"
+
+
 def parse_args():
     default_data_dir = PROJECT_DIR.parent / "DATA"
 
@@ -72,8 +75,9 @@ def main():
     )
 
     results = []
+    report_blocks: List[str] = []
     for sequence in sequences:
-        print(f"[run] {sequence.name}: {len(sequence.frame_paths)} frames")
+        print(f"Tracker: {TRACKER_NAME} {args.tracker_param} {args.epoch} ,  Sequence: {sequence.name}")
         result = inferencer.run_sequence(
             sequence,
             metric_provider=None if args.skip_metrics else lambda seq: {
@@ -84,17 +88,12 @@ def main():
 
         sequence_dir = output_dir / sequence.name
         sequence_dir.mkdir(parents=True, exist_ok=True)
-        save_sequence_outputs(sequence_dir, result)
+        report_text = build_sequence_report_text(TRACKER_NAME, args.tracker_param, args.epoch, result)
+        save_sequence_outputs(sequence_dir, result, report_text)
         results.append(result)
-
-        print(f"[done] {sequence.name}: saved to {sequence_dir}")
-        if result.metrics is not None:
-            print(
-                f"       Ii={result.metrics.intensity}, PGA={result.metrics.pga:.6f}, "
-                f"PGV={result.metrics.pgv:.6f}, MAX_X={result.metrics.max_x:.6f}, MAX_Y={result.metrics.max_y:.6f}"
-            )
-        elif result.metrics_error:
-            print(f"       metrics skipped: {result.metrics_error}")
+        report_blocks.append(report_text)
+        print(report_text)
+        print(f"结果已保存到: {sequence_dir}")
 
     save_run_summary(
         output_dir=output_dir,
@@ -107,10 +106,11 @@ def main():
         fps=args.fps,
         sequence_size_overrides=sequence_size_overrides,
         lock_bbox_size=not args.allow_size_change,
+        run_report_text="\n\n".join(report_blocks),
     )
 
-    print(f"[summary] completed {len(results)} sequence(s)")
-    print(f"[summary] outputs: {output_dir}")
+    print(f"全部序列处理完成，共 {len(results)} 个序列")
+    print(f"汇总输出目录: {output_dir}")
 
 
 def parse_sequence_size_overrides(items: List[str]) -> Dict[str, float]:
@@ -123,11 +123,42 @@ def parse_sequence_size_overrides(items: List[str]) -> Dict[str, float]:
     return overrides
 
 
-def save_sequence_outputs(output_dir: Path, result):
+def save_sequence_outputs(output_dir: Path, result, report_text: str):
     np.savetxt(output_dir / "bboxes.txt", np.asarray(result.bboxes, dtype=np.float64), delimiter="\t", fmt="%.6f")
     np.savetxt(output_dir / "time.txt", np.asarray(result.timings, dtype=np.float64), delimiter="\t", fmt="%.6f")
     with (output_dir / "summary.json").open("w", encoding="utf-8") as file:
         json.dump(result.to_dict(), file, ensure_ascii=False, indent=2)
+    with (output_dir / "report.txt").open("w", encoding="utf-8") as file:
+        file.write(report_text + "\n")
+
+
+def build_sequence_report_text(tracker_name: str, tracker_param: str, epoch: int, result) -> str:
+    lines = [
+        f"Tracker: {tracker_name} {tracker_param} {epoch} ,  Sequence: {result.sequence_name}",
+    ]
+    if result.metrics is not None:
+        lines.extend(
+            [
+                f"地震烈度计算结果 - 序列: {result.sequence_name}",
+                f"烈度指数(Ii): {result.metrics.intensity}, PGA: {result.metrics.pga}, PGV: {result.metrics.pgv}",
+                f"最大X位移: {result.metrics.max_x}m, 最大Y位移: {result.metrics.max_y}m",
+            ]
+        )
+    elif result.metrics_error:
+        lines.extend(
+            [
+                f"地震烈度计算结果 - 序列: {result.sequence_name}",
+                f"计算失败: {result.metrics_error}",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                f"地震烈度计算结果 - 序列: {result.sequence_name}",
+                "本次运行跳过了地震烈度计算",
+            ]
+        )
+    return "\n".join(lines)
 
 
 def save_run_summary(
@@ -141,6 +172,7 @@ def save_run_summary(
     fps: float,
     sequence_size_overrides: Dict[str, float],
     lock_bbox_size: bool,
+    run_report_text: str,
 ):
     payload = {
         "tracker_param": tracker_param,
@@ -155,6 +187,8 @@ def save_run_summary(
     }
     with (output_dir / "summary.json").open("w", encoding="utf-8") as file:
         json.dump(payload, file, ensure_ascii=False, indent=2)
+    with (output_dir / "run_report.txt").open("w", encoding="utf-8") as file:
+        file.write(run_report_text.rstrip() + "\n")
 
 
 if __name__ == "__main__":

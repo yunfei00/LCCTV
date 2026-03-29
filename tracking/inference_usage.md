@@ -38,7 +38,9 @@ Per-sequence outputs:
 - `bboxes.txt`
 - `time.txt`
 - `summary.json`
+- `report.txt`
 
 Run summary:
 
 - `summary.json` in the run output directory
+- `run_report.txt` in the run output directory
