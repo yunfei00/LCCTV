@@ -12,8 +12,16 @@ Recommended CPU environment:
 ```bash
 conda create -n lcctv-cpu python=3.10 -y
 conda activate lcctv-cpu
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+pip install --force-reinstall numpy==1.26.4
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 pip install opencv-python-headless scipy pandas easydict pyyaml timm yacs tensorboard tensorboardX einops
+```
+
+If Ubuntu reports `A module that was compiled using NumPy 1.x cannot be run in NumPy 2.x`,
+repair the environment with:
+
+```bash
+pip install --force-reinstall numpy==1.26.4
 ```
 
 Standalone inference entrypoint:

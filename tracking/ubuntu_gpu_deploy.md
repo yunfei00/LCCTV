@@ -1,12 +1,12 @@
 # LCCTV Ubuntu GPU 部署说明
 
-这份文档的目标是让你在一台有 NVIDIA GPU 的 Ubuntu Linux 机器上，从 0 开始把 LCCTV 新推理流程部署并跑通。
+这份文档的目标，是让你在一台有 NVIDIA GPU 的 Ubuntu Linux 机器上，从 0 开始把 LCCTV 的新推理流程部署并跑通。
 
 注意：
 
 - 新的推理入口是 `tracking/run_inference.py`
 - 不要使用 `tracking/test.py`
-- 原因是 `tracking/test.py` 开头会强制关闭 CUDA，只适合当前这个 CPU 安全模式
+- 原因是 `tracking/test.py` 里有旧的 CUDA 兼容处理逻辑，会干扰现在这套独立推理流程
 
 ## 1. 推荐目录结构
 
@@ -23,11 +23,11 @@
 - 项目目录：`/home/yourname/dz/LCCTV`
 - 数据目录：`/home/yourname/dz/DATA`
 
-`run_inference.py` 默认就会去找项目同级的 `DATA`。
+`run_inference.py` 默认会去找项目同级的 `DATA`。
 
 ## 2. 先检查 GPU 和驱动
 
-先在 Ubuntu 终端执行：
+在 Ubuntu 终端执行：
 
 ```bash
 nvidia-smi
@@ -39,23 +39,28 @@ nvidia-smi
 - 驱动版本
 - 显存信息
 
-说明 GPU 驱动基本正常。
+说明驱动基本正常。
 
-如果这一步都不通，先不要继续配 Python 环境，先把驱动解决掉。
+## 3. 安装 Miniconda
 
-## 3. 安装 Miniconda 或 Anaconda
+如果机器上还没有 `conda`，建议安装 Miniconda：
 
-如果服务器上还没有 conda，建议装 Miniconda。
+```bash
+cd /tmp
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+bash Miniconda3-latest-Linux-x86_64.sh
+source ~/miniconda3/bin/activate
+conda init bash
+exec bash
+```
 
-安装完成后，重新打开一个终端，确认：
+确认：
 
 ```bash
 conda --version
 ```
 
 ## 4. 创建推理环境
-
-建议新建一个独立环境：
 
 ```bash
 conda create -n lcctv-gpu python=3.10 -y
@@ -64,44 +69,47 @@ conda activate lcctv-gpu
 
 ## 5. 安装 PyTorch GPU 版本
 
-优先推荐 CUDA 12.1 这组。
-
-### 方案 A：CUDA 12.1
+优先推荐 CUDA 12.1：
 
 ```bash
 conda install pytorch==2.2.1 torchvision==0.17.1 torchaudio==2.2.1 pytorch-cuda=12.1 -c pytorch -c nvidia
 ```
 
-### 方案 B：CUDA 11.8
-
-如果你的服务器环境更适合 11.8，就执行：
+如果你的服务器更适合 CUDA 11.8：
 
 ```bash
 conda install pytorch==2.2.1 torchvision==0.17.1 torchaudio==2.2.1 pytorch-cuda=11.8 -c pytorch -c nvidia
 ```
 
-说明：
+## 6. 固定 NumPy 版本
 
-- 这里用的是 conda 官方推荐安装方式
-- 一般不需要你自己单独安装完整 CUDA Toolkit
-- 只要驱动足够新，PyTorch 这套 runtime 通常就可以直接跑
+这一条非常重要。
 
-官方参考：
+你这次 Ubuntu 报错里已经明确出现了：
 
-- [PyTorch Start Locally](https://docs.pytorch.org/get-started/locally/)
-- [PyTorch Previous Versions](https://docs.pytorch.org/get-started/previous-versions/)
+```text
+A module that was compiled using NumPy 1.x cannot be run in NumPy 2.x
+```
 
-## 6. 安装项目依赖
+所以在 GPU 环境里，建议安装完 PyTorch 后立刻执行：
 
-在 `lcctv-gpu` 环境里执行：
+```bash
+pip install --force-reinstall "numpy<2"
+```
+
+更稳一点的话，直接固定到：
+
+```bash
+pip install --force-reinstall numpy==1.26.4
+```
+
+## 7. 安装项目依赖
 
 ```bash
 pip install opencv-python-headless scipy pandas easydict pyyaml timm yacs tensorboard tensorboardX einops
 ```
 
-## 7. 验证 PyTorch 和 GPU
-
-执行：
+## 8. 验证 PyTorch 和 GPU
 
 ```bash
 python -c "import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0))"
@@ -112,34 +120,27 @@ python -c "import torch; print(torch.__version__); print(torch.cuda.is_available
 - `torch.cuda.is_available()` 输出 `True`
 - 能打印出 GPU 名称
 
-如果这里输出 `False`，先不要继续跑推理，先排查：
-
-- 驱动是否正常
-- 安装的是不是 CPU 版 PyTorch
-- `pytorch-cuda` 版本是否匹配
-
-## 8. 准备项目代码
-
-把代码拉到服务器，例如：
+## 9. 准备项目代码
 
 ```bash
 cd /home/yourname/dz
 git clone <你的仓库地址> LCCTV
-```
-
-或者你已经有现成代码，就直接放到：
-
-```text
-/home/yourname/dz/LCCTV
-```
-
-进入项目目录：
-
-```bash
 cd /home/yourname/dz/LCCTV
 ```
 
-## 9. 准备数据
+如果你已经有代码，就直接进入项目目录即可。
+
+## 10. 更新到最新代码
+
+新的独立推理入口已经不再依赖 `lib.train.data.processing_utils` 这条训练侧导入链。
+
+所以在 Ubuntu 上请先同步最新代码：
+
+```bash
+git pull
+```
+
+## 11. 准备数据
 
 把数据放到：
 
@@ -147,7 +148,7 @@ cd /home/yourname/dz/LCCTV
 /home/yourname/dz/DATA
 ```
 
-每个序列目录应当长这样：
+目录结构类似：
 
 ```text
 DATA/
@@ -173,25 +174,37 @@ DATA/
 - 每个序列目录必须有 `groundtruth.txt`
 - 图片目录名支持 `img`、`imgs`、`images`
 
-## 10. 准备权重文件
+## 12. 准备权重
 
-默认会去找这个位置：
-
-```text
-LCCTV/output/checkpoints/train/lcctv/B9_cae_center_all_ep300/lcctv_ep0300.pth.tar
-```
-
-例如：
+默认权重路径是：
 
 ```text
 /home/yourname/dz/LCCTV/output/checkpoints/train/lcctv/B9_cae_center_all_ep300/lcctv_ep0300.pth.tar
 ```
 
-如果你权重不在默认位置，也没关系，运行时用 `--checkpoint` 指定即可。
+如果权重不在这里，运行时用：
 
-## 11. 开始推理
+```bash
+--checkpoint /your/path/to/lcctv_ep0300.pth.tar
+```
 
-### 11.1 跑完整数据
+## 13. 先做一次冒烟测试
+
+建议先跑一个短序列验证环境：
+
+```bash
+cd /home/yourname/dz/LCCTV
+
+python tracking/run_inference.py B9_cae_center_all_ep300 \
+  --epoch 300 \
+  --device cuda:0 \
+  --sequence 1 \
+  --max-frames 20 \
+  --sequence-size 1=0.4 \
+  --output-dir output/inference/gpu_smoke
+```
+
+## 14. 跑完整 GPU 推理
 
 ```bash
 cd /home/yourname/dz/LCCTV
@@ -203,7 +216,9 @@ python tracking/run_inference.py B9_cae_center_all_ep300 \
   --output-dir output/inference/gpu_full
 ```
 
-### 11.2 只跑一个序列
+## 15. 常用变体命令
+
+只跑一个序列：
 
 ```bash
 python tracking/run_inference.py B9_cae_center_all_ep300 \
@@ -213,7 +228,7 @@ python tracking/run_inference.py B9_cae_center_all_ep300 \
   --sequence-size 1=0.4
 ```
 
-### 11.3 如果 `DATA` 不在默认位置
+数据目录不在默认位置：
 
 ```bash
 python tracking/run_inference.py B9_cae_center_all_ep300 \
@@ -223,7 +238,7 @@ python tracking/run_inference.py B9_cae_center_all_ep300 \
   --sequence-size 1=0.4 2_all=0.1 3=0.1
 ```
 
-### 11.4 如果权重不在默认位置
+权重不在默认位置：
 
 ```bash
 python tracking/run_inference.py B9_cae_center_all_ep300 \
@@ -233,7 +248,7 @@ python tracking/run_inference.py B9_cae_center_all_ep300 \
   --sequence-size 1=0.4 2_all=0.1 3=0.1
 ```
 
-### 11.5 如果你只想先验证流程，不算烈度
+跳过烈度计算：
 
 ```bash
 python tracking/run_inference.py B9_cae_center_all_ep300 \
@@ -242,11 +257,7 @@ python tracking/run_inference.py B9_cae_center_all_ep300 \
   --skip-metrics
 ```
 
-### 11.6 如果你希望框宽高允许变化
-
-默认现在保持和旧逻辑一致，宽高锁定为首帧。
-
-如果你想让模型输出的宽高也生效：
+允许框宽高变化：
 
 ```bash
 python tracking/run_inference.py B9_cae_center_all_ep300 \
@@ -256,9 +267,9 @@ python tracking/run_inference.py B9_cae_center_all_ep300 \
   --sequence-size 1=0.4 2_all=0.1 3=0.1
 ```
 
-## 12. 运行时你会看到什么输出
+## 16. 运行时输出
 
-控制台现在会打印类似下面这种格式：
+控制台会打印类似：
 
 ```text
 Tracker: lcctv B9_cae_center_all_ep300 300 ,  Sequence: 1
@@ -268,9 +279,9 @@ Tracker: lcctv B9_cae_center_all_ep300 300 ,  Sequence: 1
 结果已保存到: /home/yourname/dz/LCCTV/output/inference/gpu_full/1
 ```
 
-## 13. 输出文件怎么存
+## 17. 输出文件
 
-输出目录类似：
+目录结构类似：
 
 ```text
 output/inference/gpu_full/
@@ -293,24 +304,16 @@ output/inference/gpu_full/
   run_report.txt
 ```
 
-各文件作用：
+含义：
 
-- `bboxes.txt`
-  每一帧的跟踪框，格式是 `x y w h`
-- `time.txt`
-  每一帧推理耗时
-- `summary.json`
-  结构化结果，适合程序读取
-- `report.txt`
-  每个序列的中文文本报告，内容和控制台打印风格一致
-- 根目录 `summary.json`
-  整次运行的结构化汇总
-- 根目录 `run_report.txt`
-  整次运行的文本汇总，适合直接查看或归档
+- `bboxes.txt`：每帧预测框
+- `time.txt`：每帧耗时
+- `summary.json`：结构化结果
+- `report.txt`：单序列中文报告
+- 根目录 `summary.json`：整次运行的结构化汇总
+- 根目录 `run_report.txt`：整次运行的中文汇总
 
-## 14. 如果你想把控制台输出也保存到日志文件
-
-可以直接这样运行：
+## 18. 把控制台输出保存成日志
 
 ```bash
 python tracking/run_inference.py B9_cae_center_all_ep300 \
@@ -320,66 +323,68 @@ python tracking/run_inference.py B9_cae_center_all_ep300 \
   --output-dir output/inference/gpu_full | tee output/inference/gpu_full/console.log
 ```
 
-这样会额外得到：
+## 19. 常见问题
 
-```text
-output/inference/gpu_full/console.log
-```
-
-## 15. 常见问题
-
-### 15.1 `torch.cuda.is_available()` 是 `False`
+### 19.1 `torch.cuda.is_available()` 是 `False`
 
 先检查：
 
 ```bash
 nvidia-smi
-```
-
-再检查：
-
-```bash
 python -c "import torch; print(torch.__version__); print(torch.version.cuda); print(torch.cuda.is_available())"
 ```
 
-通常原因是：
+常见原因：
 
 - 驱动没装好
 - PyTorch 装成了 CPU 版
-- 服务器驱动和你选的 CUDA runtime 不兼容
+- CUDA runtime 和驱动不匹配
 
-### 15.2 报 `Checkpoint was not found`
+### 19.2 报 `A module that was compiled using NumPy 1.x cannot be run in NumPy 2.x`
 
-说明权重路径不对。
+执行：
 
-检查默认路径是否存在，或者直接手动指定：
+```bash
+pip install --force-reinstall numpy==1.26.4
+```
+
+### 19.3 报 `ModuleNotFoundError: No module named 'lib.train.data.processing_utils'`
+
+先更新代码：
+
+```bash
+git pull
+```
+
+再重新运行 `tracking/run_inference.py`。
+
+### 19.4 报 `Checkpoint was not found`
+
+检查默认权重路径，或者显式传：
 
 ```bash
 --checkpoint /your/path/to/lcctv_ep0300.pth.tar
 ```
 
-### 15.3 报 `No valid sequences found`
+### 19.5 报 `No valid sequences found`
 
-说明 `DATA` 目录结构不符合要求。
-
-检查每个序列是否有：
+检查每个序列目录是否都有：
 
 - `groundtruth.txt`
-- `img/` 或 `imgs/`
+- `img/`、`imgs/` 或 `images/`
 
-### 15.4 想看所有参数
+### 19.6 想看所有参数
 
 ```bash
 python tracking/run_inference.py --help
 ```
 
-## 16. 我推荐你在 Ubuntu 上最终用的标准命令
-
-如果你的目录结构就是推荐结构，直接用这条：
+## 20. 最推荐的最终命令
 
 ```bash
 conda activate lcctv-gpu
 cd /home/yourname/dz/LCCTV
+
 python tracking/run_inference.py B9_cae_center_all_ep300 \
   --epoch 300 \
   --device cuda:0 \
@@ -387,9 +392,7 @@ python tracking/run_inference.py B9_cae_center_all_ep300 \
   --output-dir output/inference/gpu_full
 ```
 
-如果你跑通了，后面主要就看：
+跑完后优先看：
 
 - `output/inference/gpu_full/run_report.txt`
 - `output/inference/gpu_full/summary.json`
-
-这两个文件。

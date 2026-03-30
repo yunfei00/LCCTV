@@ -11,10 +11,10 @@ from lib.config.lcctv.config import cfg as default_cfg
 from lib.config.lcctv.config import update_config_from_file
 from lib.inference.data import SequenceInput
 from lib.inference.earthquake import EarthquakeMetrics, compute_metrics_from_bboxes
+from lib.inference.processing import sample_target, transform_image_to_crop
 from lib.models import build_Lcctv
 from lib.test.tracker.data_utils import Preprocessor
 from lib.test.utils.hann import hann2d
-from lib.train.data.processing_utils import sample_target, transform_image_to_crop
 from lib.utils.box_ops import box_xywh_to_xyxy, clip_box
 
 
